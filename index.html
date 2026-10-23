@@ -136,6 +136,7 @@ function userDoc() {
   const days = {}; for (const l of log) { const d = l.t.slice(0, 10); days[d] = days[d] || { n: 0, ok: 0 }; days[d].n++; if (l.ok) days[d].ok++; }
   const byBook = {}; for (const q of qs) { const b = byBook[q.bookId] = byBook[q.bookId] || { total: 0, seen: 0, mastered: 0 }; b.total++; const p = prog[q.id]; if (p) { b.seen++; if (p.ivl >= 7) b.mastered++; } }
   return { userId: user.id, name: user.name, createdAt: user.createdAt, updatedAt: new Date().toISOString(), device: navigator.userAgent.slice(0, 80), bankVersion: bank ? bank.generatedAt : null,
+    push: prefs.push ? { sub: prefs.push, time: prefs.time, enabled: !!prefs.notif, perDay: prefs.perDay, books: prefs.books } : undefined,
     summary: { seen, correct, wrong, total: qs.length, days: Object.keys(days).length, lastDay: log.length ? log[log.length - 1].t.slice(0, 10) : null, streak: streak(days) }, byBook, days, progress: prog, log: log.slice(-300) };
 }
 function streak(days) { let n = 0, d = today(); if (!days[d]) d = addDays(d, -1); while (days[d]) { n++; d = addDays(d, -1); } return n; }
@@ -291,8 +292,10 @@ function renderSettings() {
     ${books.map(b => `<label><span>${esc(b.title)}</span><input type="checkbox" class="bk" data-id="${b.id}" ${!prefs.books || prefs.books.includes(b.id) ? 'checked' : ''}></label>`).join('')}
   </div>
   <div class="card">
-    ${Cap ? `<label>毎朝の通知 <input type="checkbox" id="notif" ${prefs.notif ? 'checked' : ''}></label>
-    <label>時刻 <input type="time" id="time" value="${prefs.time}"></label>` : `<h2>毎朝の通知</h2><p class="faint">このWeb版では通知機能はまだありません。スマホのアラームやリマインダーで時刻を決めておくのがおすすめです。</p>`}
+    <h2>毎朝の通知</h2>
+    ${pushSupported() ? `<label>通知を受け取る <input type="checkbox" id="notif" ${prefs.notif ? 'checked' : ''}></label>
+    <label>時刻 <select id="time">${timeOptions()}</select></label>
+    <p class="faint">30分きざみで、その時刻に「今日の復習○問・新規○問」を知らせます。設定は端末ごとです。</p>` : isIOS() && !standalone() ? `<p class="faint">iPhone では、まず Safari の共有ボタン →「ホーム画面に追加」でホーム画面から開くと通知を設定できます。</p>` : `<p class="faint">このブラウザは通知に対応していません。</p>`}
     <p class="faint" id="nstatus"></p>
   </div>
   <div class="card">
@@ -305,29 +308,44 @@ function renderSettings() {
   document.querySelectorAll('.bk').forEach(cb => cb.onchange = () => { const ids = [...document.querySelectorAll('.bk:checked')].map(x => x.dataset.id); prefs.books = ids.length === books.length ? null : ids; save(); });
   if ($('#notif')) { $('#notif').onchange = e => { prefs.notif = e.target.checked; save(); prefs.notif ? schedule() : unschedule(); };
     $('#time').onchange = e => { prefs.time = e.target.value; save(); if (prefs.notif) schedule(); };
-    $('#nstatus').textContent = prefs.notif ? `毎日 ${prefs.time} に通知します` : '通知はオフです'; }
+    $('#nstatus').textContent = prefs.notif && prefs.push ? `毎日 ${prefs.time} ごろに通知します` : '通知はオフです'; }
   $('#reset').onclick = () => { if (!confirm('この端末の名前と学習記録を消します。よろしいですか？')) return; localStorage.clear(); location.reload(); };
 }
 
-// ---------- notifications ----------
+// ---------- notifications (Web Push; 送信は GitHub Actions) ----------
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
+const standalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const pushSupported = () => !!(CFG.vapidPublic && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && (!isIOS() || standalone()));
+function timeOptions() { let h = ''; for (let m = 5 * 60; m <= 23 * 60; m += 30) { const t = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; h += `<option ${t === prefs.time ? 'selected' : ''}>${t}</option>`; } return h; }
+function b64ToU8(s) { const pad = '='.repeat((4 - s.length % 4) % 4); const raw = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, c => c.charCodeAt(0)); }
 async function schedule() {
+  const st = $('#nstatus');
   try {
-    const perm = await LN.requestPermissions();
-    if (perm.display !== 'granted') { $('#nstatus').textContent = '通知が許可されていません（設定アプリで許可してください）'; prefs.notif = false; const c = $('#notif'); if (c) c.checked = false; save(); return; }
-    const [h, m] = prefs.time.split(':').map(Number);
-    await LN.cancel({ notifications: [{ id: 1 }] }).catch(() => {});
-    await LN.schedule({ notifications: [{ id: 1, title: '教科書ドリル', body: '今日の問題が届いています。開いて始めましょう', schedule: { on: { hour: h, minute: m }, repeats: true, allowWhileIdle: true } }] });
-    const el = $('#nstatus'); if (el) el.textContent = `毎日 ${prefs.time} に通知します`;
-  } catch (e) { const el = $('#nstatus'); if (el) el.textContent = '通知の設定に失敗: ' + (e.message || e); }
+    if (!pushSupported()) throw new Error('この環境では通知を使えません');
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { prefs.notif = false; const c = $('#notif'); if (c) c.checked = false; save(); if (st) st.textContent = '通知が許可されていません（端末の設定アプリで許可してください）'; return; }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(CFG.vapidPublic) });
+    prefs.push = sub.toJSON(); prefs.notif = true; sync.dirty = true; save();
+    if (st) st.textContent = `毎日 ${prefs.time} ごろに通知します（送信中…）`;
+    await pushUser();
+    if (st) st.textContent = `毎日 ${prefs.time} ごろに通知します`;
+  } catch (e) { if (st) st.textContent = '通知の設定に失敗: ' + (e.message || e); }
 }
-async function unschedule() { try { await LN.cancel({ notifications: [{ id: 1 }] }); } catch (e) {} const el = $('#nstatus'); if (el) el.textContent = '通知はオフです'; }
+async function unschedule() {
+  prefs.notif = false; sync.dirty = true; save();
+  try { await pushUser(); } catch (e) {}
+  const st = $('#nstatus'); if (st) st.textContent = '通知はオフです';
+}
+// 時刻変更などで購読情報を最新に保つ（アプリ起動時に一度）
+async function refreshPush() { try { if (!prefs.notif || !pushSupported()) return; const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription(); if (sub) { const j = sub.toJSON(); if (JSON.stringify(j) !== JSON.stringify(prefs.push)) { prefs.push = j; sync.dirty = true; save(); } } } catch (e) {} }
 
 // ---------- boot ----------
 render();
 if (CFG.token) doSync({ rerender: true });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then(() => refreshPush()).catch(() => {});
 if (CapApp) CapApp.addListener('appStateChange', ({ isActive }) => { if (isActive && view === 'home') doSync({ rerender: true }); });
-LN.addListener('localNotificationActionPerformed', () => { view = 'home'; render(); });
 </script>
 </body>
 </html>
