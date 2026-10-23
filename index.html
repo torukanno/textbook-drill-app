@@ -219,7 +219,7 @@ function renderSyncLine() {
 }
 function renderHome() {
   const p = plan(), n = p.due.length + p.fresh.length;
-  const books = bank ? bank.books.map(b => `<span class="pill">${esc(b.title)} ${b.count}問</span>`).join('') : '';
+  const books = bank ? bank.books.map(b => `<span class="pill">${esc(b.title)}：全${b.count}問</span>`).join('') : '';
   const doneToday = log.filter(l => l.t.slice(0, 10) === today()).length;
   app.innerHTML = `<div class="top"><h1>教科書ドリル</h1><button class="link" id="settings">設定</button></div>
   <p class="faint">${esc(user.name)} さん　<span id="syncline"></span></p>
@@ -240,7 +240,9 @@ function renderHome() {
   $('#start').onclick = () => startSession(p.due.concat(p.fresh));
   const more = $('#more'); if (more) more.onclick = () => startSession(activeQs().filter(q => !prog[q.id]).sort(byOrder).slice(0, 5));
 }
-function startSession(qs) { if (!qs.length) return; session = { qs, i: 0, ok: 0, picked: null }; view = 'quiz'; render(); }
+// 選択肢の並びをシャッフルする（生成時は正解が A に偏りがちなので、表示順を毎回変える）
+function shuffled(n) { const a = [...Array(n).keys()]; for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function startSession(qs) { if (!qs.length) return; session = { qs, i: 0, ok: 0, picked: null, perm: null }; view = 'quiz'; render(); }
 async function renderQuiz() {
   const s = session, q = s.qs[s.i];
   const book = bank.books.find(b => b.id === q.bookId);
@@ -256,19 +258,21 @@ async function renderQuiz() {
   $('#quit').onclick = () => { view = 'home'; session = null; render(); doSync(); };
   if (q.img) imageUrl(q.img).then(u => { const f = $('#fig'); if (f) f.src = u; }).catch(() => { const f = $('#fig'); if (f) f.alt = '画像を読み込めませんでした'; });
   const C = $('#choices');
-  q.choices.forEach((c, i) => { const b = document.createElement('button'); b.className = 'choice'; b.innerHTML = `<span class="k">${'ABCDEF'[i]}</span><span>${esc(c)}</span>`; b.onclick = () => answer(i); C.appendChild(b); });
+  s.perm = s.perm || shuffled(q.choices.length); // perm[表示位置] = 元の選択肢番号
+  s.perm.forEach((orig, i) => { const b = document.createElement('button'); b.className = 'choice'; b.innerHTML = `<span class="k">${'ABCDEF'[i]}</span><span>${esc(q.choices[orig])}</span>`; b.onclick = () => answer(i); C.appendChild(b); });
 }
 function answer(i) {
   const s = session, q = s.qs[s.i]; if (s.picked != null) return; s.picked = i;
-  const ok = i === q.answer; if (ok) s.ok++;
+  const perm = s.perm || q.choices.map((_, k) => k); const shownAns = perm.indexOf(q.answer);
+  const ok = perm[i] === q.answer; if (ok) s.ok++;
   grade(q, ok);
-  [...document.querySelectorAll('.choice')].forEach((b, k) => { b.disabled = true; if (k === q.answer) b.classList.add('ok'); else if (k === i) b.classList.add('ng'); });
+  [...document.querySelectorAll('.choice')].forEach((b, k) => { b.disabled = true; if (k === shownAns) b.classList.add('ok'); else if (k === i) b.classList.add('ng'); });
   $('#fb').innerHTML = `<div class="fb ${ok ? 'ok' : 'ng'}">
-    <div class="t">${ok ? '正解' : '不正解'}　正答: ${'ABCDEF'[q.answer]}. ${esc(q.choices[q.answer])}</div>
+    <div class="t">${ok ? '正解' : '不正解'}　正答: ${'ABCDEF'[shownAns]}. ${esc(q.choices[q.answer])}</div>
     <p>${esc(q.explanation)}</p>
     ${q.evidence ? `<div class="ev">根拠: 「${esc(q.evidence)}」${q.page ? `（p.${q.page}${q.figure ? ' ' + esc(q.figure) : ''}）` : ''}</div>` : ''}
     <button class="btn" id="next">${s.i + 1 < s.qs.length ? '次へ' : '結果を見る'}</button></div>`;
-  $('#next').onclick = () => { s.i++; s.picked = null; if (s.i < s.qs.length) renderQuiz(); else { view = 'done'; render(); doSync({ push: true, rerender: false }); } };
+  $('#next').onclick = () => { s.i++; s.picked = null; s.perm = null; if (s.i < s.qs.length) renderQuiz(); else { view = 'done'; render(); doSync({ push: true, rerender: false }); } };
   $('#next').scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 function renderDone() {
