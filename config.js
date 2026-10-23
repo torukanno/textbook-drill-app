@@ -1,0 +1,1 @@
+window.DRILL_CONFIG = { owner: "torukanno", repo: "textbook-drill-data", branch: "main", enc: { salt: "NwoGyP1APZbm5gZ+PRCcDQ==", iv: "3WgBJtYdkjt5Wt/1", ct: "FabXZtyQM02YXSEl6td61Tmk6bpj5M3Xw/My4GuGkDv9KONb06RpcfVQMhdtU3tCNEIMxRj264/vFPX/xqgr2Twv90a2m4TR8KfxkTw8RrYZ8RzNIaILAkcD/cjBYZOeOtWF2WBvEcbwvM6eXg==", iter: 200000 } };

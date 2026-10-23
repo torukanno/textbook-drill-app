@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>教科書ドリル</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1E7F74">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="教科書ドリル">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{--bg:#F3F5F7;--ink:#1F2A44;--sub:#5B6475;--accent:#1E7F74;--paper:#fff;--line:#D9DEE6;--ok:#1E7F74;--ng:#B4352F;--okbg:#E6F3F1;--ngbg:#F8E7E6}
+  @media (prefers-color-scheme: dark){ :root{--bg:#161A22;--ink:#E7EAF0;--sub:#9AA3B5;--paper:#1F2430;--line:#2E3544;--okbg:#1B332F;--ngbg:#3A2223} }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,"Noto Sans JP",system-ui,sans-serif;min-height:100vh;-webkit-tap-highlight-color:transparent}
+  .wrap{padding:max(20px,env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));max-width:520px;margin:0 auto;display:grid;gap:14px}
+  h1{font-size:22px;margin:8px 0 0}
+  h2{font-size:16px;margin:0}
+  p{line-height:1.7;margin:0}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px}
+  .btn{display:block;width:100%;min-height:52px;border:0;border-radius:12px;background:var(--accent);color:#fff;font-size:17px;font-weight:600;cursor:pointer}
+  .btn:disabled{opacity:.45}
+  .btn.sub{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .btn.small{min-height:40px;font-size:14px;width:auto;padding:0 14px;display:inline-block}
+  label{display:flex;align-items:center;gap:10px;font-size:15px;justify-content:space-between}
+  input,select{font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);max-width:60%}
+  input[type=text]{width:100%;max-width:100%}
+  .faint{color:var(--sub);font-size:13px;line-height:1.6}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+  .stat b{display:block;font-size:24px;font-weight:700}
+  .stat span{font-size:12px;color:var(--sub)}
+  .q{font-size:17px;line-height:1.75;white-space:pre-wrap}
+  .meta{font-size:12px;color:var(--sub)}
+  .choice{display:flex;gap:12px;align-items:flex-start;width:100%;text-align:left;background:var(--paper);border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;font-size:16px;line-height:1.6;color:var(--ink);cursor:pointer}
+  .choice .k{flex:none;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;font-size:13px;font-weight:700}
+  .choice.ok{border-color:var(--ok);background:var(--okbg)} .choice.ok .k{background:var(--ok);color:#fff;border-color:var(--ok)}
+  .choice.ng{border-color:var(--ng);background:var(--ngbg)} .choice.ng .k{background:var(--ng);color:#fff;border-color:var(--ng)}
+  .choice:disabled{cursor:default}
+  .fb{border-left:4px solid var(--line);padding:10px 12px;border-radius:0 10px 10px 0;background:var(--bg);display:grid;gap:8px}
+  .fb.ok{border-color:var(--ok)} .fb.ng{border-color:var(--ng)}
+  .fb .t{font-weight:700}
+  .ev{font-size:13px;color:var(--sub);border-top:1px dashed var(--line);padding-top:8px}
+  img.fig{width:100%;border-radius:10px;background:#111;display:block;min-height:120px}
+  .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--accent);transition:width .3s}
+  .hidden{display:none !important}
+  .pill{font-size:12px;padding:3px 9px;border-radius:999px;background:var(--bg);border:1px solid var(--line);color:var(--sub)}
+  .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw}
+  .toast.show{opacity:.95}
+  .top{display:flex;justify-content:space-between;align-items:center}
+  .link{background:none;border:0;color:var(--accent);font-size:14px;padding:6px 0;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+<script src="config.js"></script>
+<script>
+'use strict';
+// ---------- native bridge (dummy outside the app) ----------
+const Cap = window.Capacitor;
+const LN = (Cap && Cap.registerPlugin) ? Cap.registerPlugin('LocalNotifications')
+  : { requestPermissions: async () => ({ display: 'denied' }), schedule: async () => {}, cancel: async () => {}, addListener: () => {} };
+const CapApp = (Cap && Cap.registerPlugin) ? Cap.registerPlugin('App') : null;
+
+// ---------- config ----------
+const CFG = Object.assign({ owner: 'torukanno', repo: 'textbook-drill-data', branch: 'main', token: '' }, window.DRILL_CONFIG || {});
+try { CFG.token = localStorage.getItem('tok') || CFG.token; } catch (e) {}
+// 暗証番号で埋め込みトークンを復号する（公開ページなので平文では置かない）
+async function unlock(pin) {
+  const e = CFG.enc; if (!e) throw new Error('設定がありません');
+  const b = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b(e.salt), iterations: e.iter || 200000, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b(e.iv) }, key, b(e.ct));
+  const tok = new TextDecoder().decode(pt); if (!/^github_pat_/.test(tok)) throw new Error('bad');
+  CFG.token = tok; try { localStorage.setItem('tok', tok); } catch (err) {}
+}
+const API = `https://api.github.com/repos/${CFG.owner}/${CFG.repo}`;
+const H = (extra) => Object.assign({ 'Authorization': 'Bearer ' + CFG.token, 'X-GitHub-Api-Version': '2022-11-28' }, extra || {});
+
+// ---------- storage ----------
+const $ = s => document.querySelector(s);
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const rid = () => Math.random().toString(36).slice(2, 8);
+
+let user = LS.get('user', null);              // {id,name,createdAt}
+let prefs = LS.get('prefs', { perDay: 10, notif: false, time: '07:00', books: null });
+let bank = LS.get('bank', null);              // {version,generatedAt,books,questions}
+let bankEtag = LS.get('bankEtag', '');
+let prog = LS.get('prog', {});                // qid -> {ease,ivl,due,reps,lapses,last,ok,ng}
+let log = LS.get('log', []);                  // [{t,q,ok}] last 500
+let sync = LS.get('sync', { dirty: false, lastPush: null, lastPull: null, sha: null, error: null });
+const save = () => { LS.set('user', user); LS.set('prefs', prefs); LS.set('prog', prog); LS.set('log', log.slice(-500)); LS.set('sync', sync); };
+
+// ---------- image cache (IndexedDB) ----------
+const idb = new Promise((res, rej) => { const r = indexedDB.open('drill', 1); r.onupgradeneeded = () => r.result.createObjectStore('img'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+async function imgGet(k) { const db = await idb; return new Promise(r => { const t = db.transaction('img').objectStore('img').get(k); t.onsuccess = () => r(t.result || null); t.onerror = () => r(null); }); }
+async function imgPut(k, b) { const db = await idb; return new Promise(r => { const t = db.transaction('img', 'readwrite').objectStore('img').put(b, k); t.onsuccess = () => r(); t.onerror = () => r(); }); }
+const urlCache = {};
+async function imageUrl(path) {
+  if (urlCache[path]) return urlCache[path];
+  let blob = await imgGet(path);
+  if (!blob) {
+    const r = await fetch(`${API}/contents/${path}?ref=${CFG.branch}`, { headers: H({ Accept: 'application/vnd.github.raw+json' }) });
+    if (!r.ok) throw new Error('画像の取得に失敗 ' + r.status);
+    blob = await r.blob(); await imgPut(path, blob);
+  }
+  return (urlCache[path] = URL.createObjectURL(blob));
+}
+
+// ---------- GitHub sync ----------
+async function pullBank() {
+  const r = await fetch(`${API}/contents/bank.json?ref=${CFG.branch}`, { headers: H({ Accept: 'application/vnd.github.raw+json', 'If-None-Match': bankEtag || '' }) });
+  if (r.status === 304) { sync.lastPull = new Date().toISOString(); sync.error = null; return false; }
+  if (!r.ok) throw new Error(r.status === 401 ? '認証エラー（アプリのトークン）' : r.status === 404 ? '問題データがまだありません' : 'HTTP ' + r.status);
+  const data = await r.json();
+  if (!data || !Array.isArray(data.questions)) throw new Error('データ形式が不正');
+  bank = data; bankEtag = r.headers.get('ETag') || ''; LS.set('bank', bank); LS.set('bankEtag', bankEtag);
+  sync.lastPull = new Date().toISOString(); sync.error = null;
+  // 画像を先読み（失敗しても無視）
+  for (const q of bank.questions) if (q.img) imageUrl(q.img).catch(() => {});
+  return true;
+}
+function userDoc() {
+  const qs = bank ? bank.questions : [];
+  const seen = Object.keys(prog).length, correct = Object.values(prog).reduce((a, p) => a + (p.ok || 0), 0), wrong = Object.values(prog).reduce((a, p) => a + (p.ng || 0), 0);
+  const days = {}; for (const l of log) { const d = l.t.slice(0, 10); days[d] = days[d] || { n: 0, ok: 0 }; days[d].n++; if (l.ok) days[d].ok++; }
+  const byBook = {}; for (const q of qs) { const b = byBook[q.bookId] = byBook[q.bookId] || { total: 0, seen: 0, mastered: 0 }; b.total++; const p = prog[q.id]; if (p) { b.seen++; if (p.ivl >= 7) b.mastered++; } }
+  return { userId: user.id, name: user.name, createdAt: user.createdAt, updatedAt: new Date().toISOString(), device: navigator.userAgent.slice(0, 80), bankVersion: bank ? bank.generatedAt : null,
+    summary: { seen, correct, wrong, total: qs.length, days: Object.keys(days).length, lastDay: log.length ? log[log.length - 1].t.slice(0, 10) : null, streak: streak(days) }, byBook, days, progress: prog, log: log.slice(-300) };
+}
+function streak(days) { let n = 0, d = today(); if (!days[d]) d = addDays(d, -1); while (days[d]) { n++; d = addDays(d, -1); } return n; }
+async function pushUser() {
+  if (!user) return;
+  const path = `users/${user.id}.json`;
+  const body = { message: `results: ${user.name} ${new Date().toISOString().slice(0, 16)}`, branch: CFG.branch, content: b64(JSON.stringify(userDoc())) };
+  let sha = sync.sha;
+  if (!sha) { const m = await fetch(`${API}/contents/${path}?ref=${CFG.branch}`, { headers: H({ Accept: 'application/vnd.github+json' }) }); if (m.ok) sha = (await m.json()).sha; }
+  if (sha) body.sha = sha;
+  let r = await fetch(`${API}/contents/${path}`, { method: 'PUT', headers: H({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
+  if (r.status === 409 || r.status === 422) { // sha が古い → 取り直して1回だけ再試行
+    const m = await fetch(`${API}/contents/${path}?ref=${CFG.branch}`, { headers: H({ Accept: 'application/vnd.github+json' }) });
+    if (m.ok) { body.sha = (await m.json()).sha; r = await fetch(`${API}/contents/${path}`, { method: 'PUT', headers: H({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }), body: JSON.stringify(body) }); }
+  }
+  if (!r.ok) throw new Error('結果の送信に失敗 HTTP ' + r.status);
+  sync.sha = (await r.json()).content.sha; sync.dirty = false; sync.lastPush = new Date().toISOString(); sync.error = null; save();
+}
+function b64(s) { const bytes = new TextEncoder().encode(s); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); }
+let syncing = false;
+async function doSync(opts = {}) {
+  if (syncing || !CFG.token) return; syncing = true; renderSyncLine();
+  try { await pullBank(); if (sync.dirty || opts.push) await pushUser(); }
+  catch (e) { sync.error = e.message || String(e); }
+  finally { syncing = false; save(); renderSyncLine(); if (opts.rerender) render(); }
+}
+
+// ---------- scheduling (SM-2, same as the browser app) ----------
+const activeQs = () => (bank ? bank.questions : []).filter(q => !prefs.books || prefs.books.includes(q.bookId));
+const bookRank = id => bank ? bank.books.findIndex(b => b.id === id) : 0;
+const byOrder = (a, b) => (bookRank(a.bookId) - bookRank(b.bookId)) || (a.idx - b.idx) || (a.id < b.id ? -1 : 1);
+function plan() {
+  const t = today(), qs = activeQs();
+  const due = qs.filter(q => prog[q.id] && prog[q.id].due <= t).sort(byOrder);
+  const doneToday = log.filter(l => l.t.slice(0, 10) === t && l.first).length;
+  const fresh = qs.filter(q => !prog[q.id]).sort(byOrder).slice(0, Math.max(0, prefs.perDay - doneToday));
+  return { due, fresh, total: qs.length, unseen: qs.filter(q => !prog[q.id]).length };
+}
+function grade(q, ok) {
+  const p = prog[q.id] || { ease: 2.5, ivl: 0, reps: 0, lapses: 0, ok: 0, ng: 0 };
+  const first = !prog[q.id];
+  if (ok) { p.ivl = p.ivl === 0 ? 1 : p.ivl === 1 ? 3 : Math.round(p.ivl * p.ease); p.ease = Math.min(3, p.ease + 0.1); p.reps++; p.ok++; }
+  else { p.ivl = 0; p.ease = Math.max(1.3, p.ease - 0.2); p.lapses++; p.ng++; }
+  p.due = addDays(today(), ok ? p.ivl : 1); p.last = new Date().toISOString();
+  prog[q.id] = p; log.push({ t: p.last, q: q.id, ok, first }); if (log.length > 500) log = log.slice(-500);
+  sync.dirty = true; save();
+}
+
+// ---------- UI ----------
+const app = $('#app');
+let view = 'home', session = null;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2200); }
+function render() { if (!CFG.token) return renderUnlock(); if (!user) return renderSetup(); if (view === 'quiz') return renderQuiz(); if (view === 'settings') return renderSettings(); if (view === 'done') return renderDone(); renderHome(); }
+
+function renderUnlock() {
+  app.innerHTML = `<h1>教科書ドリル</h1>
+  <div class="card"><h2>暗証番号を入力</h2>
+    <p class="faint">管理者から教えてもらった6桁の番号です。この端末では初回だけ入力します。</p>
+    <input type="tel" id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="font-size:24px;letter-spacing:.3em;text-align:center">
+    <button class="btn" id="unlock">つづける</button><p class="faint" id="perr"></p></div>`;
+  const go = async () => { const b = $('#unlock'); b.disabled = true; try { await unlock($('#pin').value.trim()); render(); doSync({ rerender: true }); } catch (e) { $('#perr').textContent = '暗証番号が違います'; b.disabled = false; } };
+  $('#unlock').onclick = go; $('#pin').onkeydown = e => { if (e.key === 'Enter') go(); };
+  $('#pin').focus();
+}
+function renderSetup() {
+  app.innerHTML = `<h1>教科書ドリル</h1>
+  <div class="card"><h2>はじめに名前を登録</h2>
+    <p class="faint">この名前で学習の記録が管理者（PC側）に届きます。ログインは不要です。</p>
+    <input type="text" id="name" placeholder="例: 山田" maxlength="20" autocomplete="off">
+    <button class="btn" id="go">はじめる</button></div>`;
+  $('#go').onclick = () => {
+    const name = $('#name').value.trim(); if (!name) return toast('名前を入れてください');
+    user = { id: name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 12).toLowerCase() + '-' + rid(), name, createdAt: new Date().toISOString() };
+    save(); render(); doSync({ push: true, rerender: true });
+  };
+}
+function renderSyncLine() {
+  const el = $('#syncline'); if (!el) return;
+  el.textContent = syncing ? '同期中…' : sync.error ? '同期エラー: ' + sync.error : sync.lastPull ? `最終同期 ${new Date(sync.lastPull).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}${sync.dirty ? '（未送信の結果あり）' : ''}` : '未同期';
+}
+function renderHome() {
+  const p = plan(), n = p.due.length + p.fresh.length;
+  const books = bank ? bank.books.map(b => `<span class="pill">${esc(b.title)} ${b.count}問</span>`).join('') : '';
+  const doneToday = log.filter(l => l.t.slice(0, 10) === today()).length;
+  app.innerHTML = `<div class="top"><h1>教科書ドリル</h1><button class="link" id="settings">設定</button></div>
+  <p class="faint">${esc(user.name)} さん　<span id="syncline"></span></p>
+  <div class="card">
+    <div class="stat"><div><b>${p.due.length}</b><span>復習</span></div><div><b>${p.fresh.length}</b><span>新しい問題</span></div><div><b>${doneToday}</b><span>今日解いた</span></div></div>
+    <button class="btn" id="start" ${n ? '' : 'disabled'}>${n ? `今日の ${n} 問をはじめる` : (bank ? '今日の分は終わりました' : sync.error ? '問題データを取得できません（下の「今すぐ同期」で再試行）' : '問題データを取得中…')}</button>
+    ${!n && bank && p.unseen ? `<button class="btn sub" id="more">もう少し解く（＋5問）</button>` : ''}
+  </div>
+  <div class="card"><h2>進み具合</h2>
+    <div class="bar"><i style="width:${p.total ? Math.round((p.total - p.unseen) / p.total * 100) : 0}%"></i></div>
+    <p class="faint">${p.total - p.unseen} / ${p.total} 問に着手　・　連続 ${streak(userDoc().days)} 日</p>
+    <div class="row">${books}</div>
+  </div>
+  <div class="row"><button class="btn sub small" id="sync">今すぐ同期</button></div>`;
+  renderSyncLine();
+  $('#settings').onclick = () => { view = 'settings'; render(); };
+  $('#sync').onclick = () => doSync({ push: true, rerender: true });
+  $('#start').onclick = () => startSession(p.due.concat(p.fresh));
+  const more = $('#more'); if (more) more.onclick = () => startSession(activeQs().filter(q => !prog[q.id]).sort(byOrder).slice(0, 5));
+}
+function startSession(qs) { if (!qs.length) return; session = { qs, i: 0, ok: 0, picked: null }; view = 'quiz'; render(); }
+async function renderQuiz() {
+  const s = session, q = s.qs[s.i];
+  const book = bank.books.find(b => b.id === q.bookId);
+  app.innerHTML = `<div class="top"><span class="meta">${s.i + 1} / ${s.qs.length}</span><button class="link" id="quit">中断</button></div>
+  <div class="bar"><i style="width:${Math.round(s.i / s.qs.length * 100)}%"></i></div>
+  <div class="card">
+    <div class="meta">${esc(book ? book.title : '')}　${esc(q.chapter || '')}${prog[q.id] && s.picked == null ? '　<span class="pill">復習</span>' : ''}</div>
+    ${q.img ? `<img class="fig" id="fig" alt="図">` : ''}
+    <div class="q">${esc(q.q)}</div>
+  </div>
+  <div id="choices" style="display:grid;gap:10px"></div>
+  <div id="fb"></div>`;
+  $('#quit').onclick = () => { view = 'home'; session = null; render(); doSync(); };
+  if (q.img) imageUrl(q.img).then(u => { const f = $('#fig'); if (f) f.src = u; }).catch(() => { const f = $('#fig'); if (f) f.alt = '画像を読み込めませんでした'; });
+  const C = $('#choices');
+  q.choices.forEach((c, i) => { const b = document.createElement('button'); b.className = 'choice'; b.innerHTML = `<span class="k">${'ABCDEF'[i]}</span><span>${esc(c)}</span>`; b.onclick = () => answer(i); C.appendChild(b); });
+}
+function answer(i) {
+  const s = session, q = s.qs[s.i]; if (s.picked != null) return; s.picked = i;
+  const ok = i === q.answer; if (ok) s.ok++;
+  grade(q, ok);
+  [...document.querySelectorAll('.choice')].forEach((b, k) => { b.disabled = true; if (k === q.answer) b.classList.add('ok'); else if (k === i) b.classList.add('ng'); });
+  $('#fb').innerHTML = `<div class="fb ${ok ? 'ok' : 'ng'}">
+    <div class="t">${ok ? '正解' : '不正解'}　正答: ${'ABCDEF'[q.answer]}. ${esc(q.choices[q.answer])}</div>
+    <p>${esc(q.explanation)}</p>
+    ${q.evidence ? `<div class="ev">根拠: 「${esc(q.evidence)}」${q.page ? `（p.${q.page}${q.figure ? ' ' + esc(q.figure) : ''}）` : ''}</div>` : ''}
+    <button class="btn" id="next">${s.i + 1 < s.qs.length ? '次へ' : '結果を見る'}</button></div>`;
+  $('#next').onclick = () => { s.i++; s.picked = null; if (s.i < s.qs.length) renderQuiz(); else { view = 'done'; render(); doSync({ push: true, rerender: false }); } };
+  $('#next').scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+function renderDone() {
+  const s = session;
+  app.innerHTML = `<h1>おつかれさまでした</h1>
+  <div class="card"><div class="stat"><div><b>${s.qs.length}</b><span>解いた</span></div><div><b>${s.ok}</b><span>正解</span></div><div><b>${Math.round(s.ok / s.qs.length * 100)}%</b><span>正答率</span></div></div>
+  <p class="faint">間違えた問題は明日もう一度出ます。結果は管理者に自動送信されます。</p>
+  <button class="btn" id="home">ホームへ</button></div>`;
+  $('#home').onclick = () => { view = 'home'; session = null; render(); };
+}
+function renderSettings() {
+  const books = bank ? bank.books : [];
+  app.innerHTML = `<div class="top"><h1>設定</h1><button class="link" id="back">戻る</button></div>
+  <div class="card">
+    <label>1日の新しい問題数 <select id="perDay">${[5, 10, 15, 20, 30].map(n => `<option ${prefs.perDay === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    ${books.map(b => `<label><span>${esc(b.title)}</span><input type="checkbox" class="bk" data-id="${b.id}" ${!prefs.books || prefs.books.includes(b.id) ? 'checked' : ''}></label>`).join('')}
+  </div>
+  <div class="card">
+    ${Cap ? `<label>毎朝の通知 <input type="checkbox" id="notif" ${prefs.notif ? 'checked' : ''}></label>
+    <label>時刻 <input type="time" id="time" value="${prefs.time}"></label>` : `<h2>毎朝の通知</h2><p class="faint">このWeb版では通知機能はまだありません。スマホのアラームやリマインダーで時刻を決めておくのがおすすめです。</p>`}
+    <p class="faint" id="nstatus"></p>
+  </div>
+  <div class="card">
+    <p class="faint">名前: ${esc(user.name)}　ID: ${esc(user.id)}</p>
+    <p class="faint">問題データ: ${bank ? `${bank.questions.length}問（${new Date(bank.generatedAt).toLocaleDateString('ja-JP')} 更新）` : 'なし'}</p>
+    <button class="btn sub" id="reset">この端末の記録を消して最初から</button>
+  </div>`;
+  $('#back').onclick = () => { view = 'home'; render(); };
+  $('#perDay').onchange = e => { prefs.perDay = +e.target.value; save(); };
+  document.querySelectorAll('.bk').forEach(cb => cb.onchange = () => { const ids = [...document.querySelectorAll('.bk:checked')].map(x => x.dataset.id); prefs.books = ids.length === books.length ? null : ids; save(); });
+  if ($('#notif')) { $('#notif').onchange = e => { prefs.notif = e.target.checked; save(); prefs.notif ? schedule() : unschedule(); };
+    $('#time').onchange = e => { prefs.time = e.target.value; save(); if (prefs.notif) schedule(); };
+    $('#nstatus').textContent = prefs.notif ? `毎日 ${prefs.time} に通知します` : '通知はオフです'; }
+  $('#reset').onclick = () => { if (!confirm('この端末の名前と学習記録を消します。よろしいですか？')) return; localStorage.clear(); location.reload(); };
+}
+
+// ---------- notifications ----------
+async function schedule() {
+  try {
+    const perm = await LN.requestPermissions();
+    if (perm.display !== 'granted') { $('#nstatus').textContent = '通知が許可されていません（設定アプリで許可してください）'; prefs.notif = false; const c = $('#notif'); if (c) c.checked = false; save(); return; }
+    const [h, m] = prefs.time.split(':').map(Number);
+    await LN.cancel({ notifications: [{ id: 1 }] }).catch(() => {});
+    await LN.schedule({ notifications: [{ id: 1, title: '教科書ドリル', body: '今日の問題が届いています。開いて始めましょう', schedule: { on: { hour: h, minute: m }, repeats: true, allowWhileIdle: true } }] });
+    const el = $('#nstatus'); if (el) el.textContent = `毎日 ${prefs.time} に通知します`;
+  } catch (e) { const el = $('#nstatus'); if (el) el.textContent = '通知の設定に失敗: ' + (e.message || e); }
+}
+async function unschedule() { try { await LN.cancel({ notifications: [{ id: 1 }] }); } catch (e) {} const el = $('#nstatus'); if (el) el.textContent = '通知はオフです'; }
+
+// ---------- boot ----------
+render();
+if (CFG.token) doSync({ rerender: true });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (CapApp) CapApp.addListener('appStateChange', ({ isActive }) => { if (isActive && view === 'home') doSync({ rerender: true }); });
+LN.addListener('localNotificationActionPerformed', () => { view = 'home'; render(); });
+</script>
+</body>
+</html>
