@@ -209,7 +209,7 @@ function renderSetup() {
     <button class="btn" id="go">はじめる</button></div>`;
   $('#go').onclick = () => {
     const name = $('#name').value.trim(); if (!name) return toast('名前を入れてください');
-    user = { id: name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 12).toLowerCase() + '-' + rid(), name, createdAt: new Date().toISOString() };
+    user = { id: 'u' + rid() + rid(), name, createdAt: new Date().toISOString() };
     save(); render(); doSync({ push: true, rerender: true });
   };
 }
