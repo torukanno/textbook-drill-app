@@ -1,14 +1,18 @@
 {
+  "id": "/textbook-drill-app/",
   "name": "教科書ドリル",
   "short_name": "ドリル",
+  "description": "教科書から毎日出題。復習間隔つき4択ドリル",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#F3F5F7",
   "theme_color": "#1E7F74",
   "lang": "ja",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
