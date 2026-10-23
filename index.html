@@ -168,11 +168,23 @@ async function doSync(opts = {}) {
 const activeQs = () => (bank ? bank.questions : []).filter(q => !prefs.books || prefs.books.includes(q.bookId));
 const bookRank = id => bank ? bank.books.findIndex(b => b.id === id) : 0;
 const byOrder = (a, b) => (bookRank(a.bookId) - bookRank(b.bookId)) || (a.idx - b.idx) || (a.id < b.id ? -1 : 1);
+// 新規問題は章をまんべんなく回す: 着手の少ない章から順に1問ずつ（同じ章内は本の順）
+function pickEven(cands, n) {
+  if (n <= 0 || !cands.length) return [];
+  const seenBy = {}; for (const q of (bank ? bank.questions : [])) if (prog[q.id]) { const k = q.bookId + '|' + (q.chapter || ''); seenBy[k] = (seenBy[k] || 0) + 1; }
+  const pool = {}; for (const q of cands.slice().sort(byOrder)) { const k = q.bookId + '|' + (q.chapter || ''); (pool[k] = pool[k] || []).push(q); }
+  const out = [];
+  while (out.length < n && Object.keys(pool).length) {
+    const k = Object.keys(pool).sort((a, b) => (seenBy[a] || 0) - (seenBy[b] || 0) || (bookRank(a.split('|')[0]) - bookRank(b.split('|')[0])))[0];
+    out.push(pool[k].shift()); seenBy[k] = (seenBy[k] || 0) + 1; if (!pool[k].length) delete pool[k];
+  }
+  return out;
+}
 function plan() {
   const t = today(), qs = activeQs();
   const due = qs.filter(q => prog[q.id] && prog[q.id].due <= t).sort(byOrder);
   const doneToday = log.filter(l => l.t.slice(0, 10) === t && l.first).length;
-  const fresh = qs.filter(q => !prog[q.id]).sort(byOrder).slice(0, Math.max(0, prefs.perDay - doneToday));
+  const fresh = pickEven(qs.filter(q => !prog[q.id]), Math.max(0, prefs.perDay - doneToday));
   return { due, fresh, total: qs.length, unseen: qs.filter(q => !prog[q.id]).length };
 }
 function grade(q, ok) {
@@ -239,7 +251,7 @@ function renderHome() {
   $('#settings').onclick = () => { view = 'settings'; render(); };
   $('#sync').onclick = () => doSync({ push: true, rerender: true });
   $('#start').onclick = () => startSession(p.due.concat(p.fresh));
-  const more = $('#more'); if (more) more.onclick = () => startSession(activeQs().filter(q => !prog[q.id]).sort(byOrder).slice(0, 5));
+  const more = $('#more'); if (more) more.onclick = () => startSession(pickEven(activeQs().filter(q => !prog[q.id]), 5));
 }
 // 選択肢の並びをシャッフルする（生成時は正解が A に偏りがちなので、表示順を毎回変える）
 function shuffled(n) { const a = [...Array(n).keys()]; for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
